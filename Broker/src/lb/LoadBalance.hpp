@@ -70,8 +70,9 @@ namespace broker {
 namespace lb {
 
 const double NORMAL_TOLERANCE = 0.5;
-const unsigned int LOAD_TIMEOUT = 200; //milliseconds
-const unsigned int STATE_TIMEOUT = 600; //milliseconds
+const unsigned int LOAD_TIMEOUT = 4000; //milliseconds
+const unsigned int STATE_TIMEOUT = 5000; //milliseconds
+const unsigned int PSTAR_TIMEOUT = 5000; //milliseconds
 
 //////////////////////////////////////////////////////////
 /// class LBAgent
@@ -113,6 +114,8 @@ class LBAgent
         void StartStateTimer( unsigned int delay );
         /// Sends request to SC module to initiate state collection on timeout
         void HandleStateTimer( const boost::system::error_code & error);
+        ///
+        void HandlePstarTimer ( const boost::system::error_code & error);
         
         // Messages
         /// Sends a message 'msg' to the peers in 'peerSet_'
@@ -136,6 +139,7 @@ class LBAgent
         void HandleAccept(CMessage msg, PeerNodePtr peer); 
         void HandleCollectedState(CMessage msg, PeerNodePtr peer); 
         void HandleComputedNormal(CMessage msg, PeerNodePtr peer); 
+        void HandleCheckInvariant(CMessage msg, PeerNodePtr peer);
         
         /// Adds a new node to the list of known peers using its UUID
         PeerNodePtr AddPeer(std::string uuid);
@@ -167,7 +171,20 @@ class LBAgent
         EStatus   m_Status;
         /// Previous demand state of this node before state change
         EStatus   m_prevStatus;  
-   
+        
+
+        ///Variables for checking invariant
+        ///flag for calculating g - supply or draw of the system
+        bool m_gFlag;
+        ///flag for checking invariant
+        bool m_invFlag;
+        ///supply or draw of the system
+        double m_g;
+        ///highest supply value in the last migration cycle
+        double m_highestSupply;
+        ///
+        double m_prevSupply;
+
         // Peer lists
         /// Set of known peers in Demand State
         PeerSet     m_HiNodes;
@@ -195,10 +212,14 @@ class LBAgent
         CBroker::TimerHandle     m_GlobalTimer;
         /// Timer until next periodic state collection
         CBroker::TimerHandle      m_StateTimer;
+        /// Timer until next pstar could be set
+        CBroker::TimerHandle     m_PstarTimer;
         
         CBroker &m_broker;
         bool m_active;
         bool m_sstExists;
+
+        bool m_inProgress;
 };
 
 } // namespace lb

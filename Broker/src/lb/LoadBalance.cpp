@@ -110,6 +110,7 @@ LBAgent::LBAgent(std::string uuid_,
     m_Normal = 0;
     m_GlobalTimer = broker.AllocateTimer("lb");
     m_StateTimer = broker.AllocateTimer("lb");
+    m_PstarTimer= broker.AllocateTimer("lb");
     RegisterSubhandle("any.PeerList",boost::bind(&LBAgent::HandlePeerList, this, _1, _2));
     RegisterSubhandle("lb.demand",boost::bind(&LBAgent::HandleDemand, this, _1, _2));
     RegisterSubhandle("lb.normal",boost::bind(&LBAgent::HandleNormal, this, _1, _2));
@@ -121,9 +122,16 @@ LBAgent::LBAgent(std::string uuid_,
     RegisterSubhandle("lb.accept",boost::bind(&LBAgent::HandleAccept, this, _1, _2));
     RegisterSubhandle("lb.CollectedState",boost::bind(&LBAgent::HandleCollectedState, this, _1, _2));
     RegisterSubhandle("lb.ComputedNormal",boost::bind(&LBAgent::HandleComputedNormal, this, _1, _2));
+    RegisterSubhandle("lb.CheckInvariant",boost::bind(&LBAgent::HandleCheckInvariant, this, _1, _2));
     RegisterSubhandle("any",boost::bind(&LBAgent::HandleAny, this, _1, _2));
     m_active = false;
     m_sstExists = false;
+    //flag for calculate excess or draw of the system (g)
+    m_gFlag = false;
+    //flag for check invariant
+    m_invFlag = false;
+    //
+    m_inProgress = false;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -579,6 +587,11 @@ void LBAgent::HandlePeerList(CMessage msg, PeerNodePtr peer)
     // If you receive a peerList from your new leader, process it and
     // identify your new group members
     // --------------------------------------------------------------
+
+    // ------------------------Invariant-----------------------------
+    // Once a "PeerList" message is received, which means there is a change in the list, 
+    // m_gFlag will be set for recalculating the supply or the draw of the system. 
+    // ---------------------------------------------------------------
     Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
     PeerSet temp;
     Logger.Notice << "\nPeer List received from Group Leader: " << peer->GetUUID() <<std::endl;
@@ -654,6 +667,9 @@ void LBAgent::HandleNormal(CMessage msg, PeerNodePtr peer)
     EraseInPeerSet(m_HiNodes,peer);
     EraseInPeerSet(m_LoNodes,peer);
     InsertInPeerSet(m_NoNodes,peer);
+
+    //set m_gFlag
+    m_gFlag = true;
 }
 
 void LBAgent::HandleSupply(CMessage msg, PeerNodePtr peer)
@@ -751,8 +767,9 @@ void LBAgent::HandleYes(CMessage msg, PeerNodePtr peer)
     m_.SetHandler("lb."+ ss_.str());
 
     //Its better to check your status again before initiating drafting
-    if( peer->GetUUID() != GetUUID() && LBAgent::SUPPLY == m_Status )
+    if( peer->GetUUID() != GetUUID() && LBAgent::SUPPLY == m_Status && !m_inProgress)
     {
+        m_inProgress = true;
         try
         {
             peer->Send(m_);
@@ -761,6 +778,13 @@ void LBAgent::HandleYes(CMessage msg, PeerNodePtr peer)
         {
             Logger.Info << "Couldn't send Message To Peer" << std::endl;
         }
+    }
+    else
+    {
+        Logger.Status << "there is a migration already in processing..." << std::endl;
+        //once time out, call HandlePstartTimer to set m_inProgress to be false
+        m_broker.Schedule(m_PstarTimer, boost::posix_time::milliseconds(PSTAR_TIMEOUT),
+              boost::bind(&LBAgent::HandlePstarTimer, this, boost::asio::placeholders::error));
     }
 }
 
@@ -803,19 +827,32 @@ void LBAgent::HandleDrafting(CMessage msg, PeerNodePtr peer)
 
         if( peer->GetUUID() != GetUUID() && LBAgent::DEMAND == m_Status )
         {
-            try
-            {
-                peer->Send(m_);
-            }
-            catch (boost::system::system_error& e)
-            {
-                Logger.Info << "Couldn't Send Message To Peer" << std::endl;
-            }
-
             // Make necessary power setting accordingly to allow power migration
             // !!!NOTE: You may use Step_PStar() or PStar(m_DemandVal) currently
             if (m_sstExists)
-               Step_PStar();
+            {
+                if (!m_inProgress)
+                {
+                    m_inProgress = true;
+                    try
+                    {
+                        peer->Send(m_);
+                    }
+                    catch (boost::system::system_error& e)
+                    {
+                        Logger.Info << "Couldn't Send Message To Peer" << std::endl;
+                    }
+                    Logger.Status << "Step_Pstar() is called..." << std::endl;
+                    Step_PStar();
+                }
+                else
+                {
+                    Logger.Status << "Step_Pstar() couldn't be called..." << std::endl;
+                    //once time out, call HandlePstartTimer to set m_inProgress to be false
+                    m_broker.Schedule(m_PstarTimer, boost::posix_time::milliseconds(PSTAR_TIMEOUT),
+                        boost::bind(&LBAgent::HandlePstarTimer, this, boost::asio::placeholders::error));
+                }
+            }
             else
                Desd_PStar();
         }
@@ -850,13 +887,66 @@ void LBAgent::HandleAccept(CMessage msg, PeerNodePtr peer)
         Logger.Warn<<"Migrating power on request from: "<< peer->GetUUID() << std::endl;
 	// !!!NOTE: You may use Step_PStar() or PStar(DemandValue) currently
         if (m_sstExists)
-           Step_PStar();
+        {
+/*
+            if (!m_inProgress)
+            {
+                m_inProgress = true;
+*/
+                Logger.Status << "Step_Pstar() is called..." << std::endl;
+                Step_PStar();
+/*
+            }
+            else
+            {
+                Logger.Status << "Step_Pstar() couldn't be called..." << std::endl;
+            }
+*/
+        }
         else
            Desd_PStar();
     }//end if( LBAgent::SUPPLY == m_Status)
     else
     {
         Logger.Warn << "Unexpected Accept message" << std::endl;
+    }
+    // ------------------------Invariant-----------------------------
+    // Once an "accept" message is received, one migration cycle is finished. 
+    // Set m_invFlag for checking Power Flow and Knapsack invariants
+    // and call CollectState.
+    // --------------------------------------------------------------
+
+    CMessage m_;
+    m_.m_submessages.put("lb.source", GetUUID());
+    ss_.clear();
+    ss_.str("CheckInvariant");
+    m_.SetHandler("lb."+ ss_.str());
+    ss_.clear();
+    //call state collection if being leader, otherwise send msg to leader for checking invariant
+    if (m_Leader == GetUUID())
+    {
+        //set m_invFlag
+        m_invFlag = true;        
+        //CollectState();
+    }
+    else    
+    {
+        GetPeer(m_Leader)->Send(m_);  
+    }
+}
+
+void LBAgent::HandleCheckInvariant(CMessage msg, PeerNodePtr peer)
+{
+    Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
+    if(m_Leader == GetUUID())
+    {
+        //set m_invFlag
+        m_invFlag = true;
+        //CollectState();
+    }
+    else
+    {
+        Logger.Notice << "Unexpected CheckInvariant message!!" << std::endl;
     }
 }
 
@@ -869,14 +959,27 @@ void LBAgent::HandleCollectedState(CMessage msg, PeerNodePtr peer)
     int peercount=0;
     double agg_gateway=0;
     ptree pt = msg.GetSubMessages();
+
+    //a vector with size m_AllPeers
+    std::vector<double> powerLevel(m_AllPeers.size());
+
 	BOOST_FOREACH(ptree::value_type &v, pt.get_child("CollectedState.state"))
 	{
+        //save power level for each node into a vector
+        powerLevel[peercount] = boost::lexical_cast<double>(v.second.data());
+
 	    Logger.Notice << "SC module returned values: "
 			  << v.second.data() << std::endl;
  	    peercount++;
             agg_gateway += boost::lexical_cast<double>(v.second.data());
 	}
 
+    //calculate total excess or draw of the system
+    if (m_gFlag == true)
+    {
+        m_g = agg_gateway;
+        m_gFlag = false;
+    }
 	//Consider any intransit "accept" messages in agg_gateway calculation
     if(pt.get_child_optional("CollectedState.intransit"))
     {
@@ -887,7 +990,7 @@ void LBAgent::HandleCollectedState(CMessage msg, PeerNodePtr peer)
             if(v.second.data() == "accept"){
 	    Logger.Notice << "SC module returned values: "
 			  << v.second.data() << std::endl;
-                agg_gateway += P_Migrate;
+                //agg_gateway += P_Migrate;
              }
         }
     }
@@ -896,6 +999,51 @@ void LBAgent::HandleCollectedState(CMessage msg, PeerNodePtr peer)
         m_Normal = agg_gateway/peercount;
         Logger.Info << "Computed Normal: " << m_Normal << std::endl;
         SendNormal(m_Normal);
+    }
+    //Normalize power level of each node
+    for (int i = 0; i < m_AllPeers.size(); i++)
+    {
+        powerLevel[i]-= m_Normal;
+    }
+
+    //check power flow and knapsack invariant if flag is true
+    if (m_invFlag == true)
+    {
+        Logger.Status << "                 Cyber Invariant            " << std::endl;
+        //power flow invariant
+        double diff = m_g - agg_gateway;
+        Logger.Status << "The power flow invariant changes from " << m_g << " to " << agg_gateway << std::endl;
+        //knapsack invariant: after every power imigration cycle, highest supply nodes will decrease
+        //highest supply means deeper negative, decrease means less negative
+        m_highestSupply = powerLevel[0];
+        for (int i = 1; i < m_AllPeers.size(); i++)
+        {
+            if (m_highestSupply > powerLevel[i])
+                m_highestSupply = powerLevel[i];
+        }
+        if (m_prevSupply != 0)
+        {
+            if(m_prevSupply - m_highestSupply < 0)
+                Logger.Status << "Knapsack Invariant is satisfied. Previously highest supply is "<< m_prevSupply <<
+                                 " Current highest supply is " << m_highestSupply <<std::endl;
+            else
+                Logger.Status << "Knapsack Invariant is not satisfied.Previously highest supply is "<< m_prevSupply <<
+                                 " Current highest supply is " << m_highestSupply <<std::endl;
+        }
+        m_prevSupply = m_highestSupply;
+/*
+        //check physical invariant 
+        device::SettingValue OmegaValue = m_phyDevManager->GetValue("Omega", "frequency", &device::SumValues);
+        device::SettingValue ThetaValue = m_phyDevManager->GetValue("Theta", "angle", &device::SumValues); 
+        device::SettingValue KeiValue = m_phyDevManager->GetValue("Kei", "lost", &device::SumValues);
+        Logger.Status << "-----------Omega is " << OmegaValue << "--------------" << std::endl;
+        Logger.Status << "-----------Theta is " << ThetaValue << "--------------" << std::endl;
+        Logger.Status << "-----------Kei is " << KeiValue << "--------------" << std::endl;
+*/
+        //TODO: physical invariant equation
+
+        //set invariant checking flag to false
+        m_invFlag = false;
     }
 }
 
@@ -1069,6 +1217,14 @@ void LBAgent::HandleStateTimer( const boost::system::error_code & error )
     m_active = false;
     StartStateTimer( STATE_TIMEOUT );
 }
+
+void LBAgent::HandlePstarTimer( const boost::system::error_code & error )
+{
+    Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
+    m_inProgress = false;
+}
+
+
 
 } // namespace lb
 
