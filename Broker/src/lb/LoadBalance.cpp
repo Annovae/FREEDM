@@ -885,23 +885,11 @@ void LBAgent::HandleAccept(CMessage msg, PeerNodePtr peer)
     {
         // Make necessary power setting accordingly to allow power migration
         Logger.Warn<<"Migrating power on request from: "<< peer->GetUUID() << std::endl;
-	// !!!NOTE: You may use Step_PStar() or PStar(DemandValue) currently
+	    // !!!NOTE: You may use Step_PStar() or PStar(DemandValue) currently
         if (m_sstExists)
         {
-/*
-            if (!m_inProgress)
-            {
-                m_inProgress = true;
-*/
-                Logger.Status << "Step_Pstar() is called..." << std::endl;
-                Step_PStar();
-/*
-            }
-            else
-            {
-                Logger.Status << "Step_Pstar() couldn't be called..." << std::endl;
-            }
-*/
+            Logger.Status << "Step_Pstar() is called..." << std::endl;
+            Step_PStar();
         }
         else
            Desd_PStar();
@@ -911,9 +899,8 @@ void LBAgent::HandleAccept(CMessage msg, PeerNodePtr peer)
         Logger.Warn << "Unexpected Accept message" << std::endl;
     }
     // ------------------------Invariant-----------------------------
-    // Once an "accept" message is received, one migration cycle is finished. 
+    // Once an "accept" message is received and P* is set, one migration cycle is finished. 
     // Set m_invFlag for checking Power Flow and Knapsack invariants
-    // and call CollectState.
     // --------------------------------------------------------------
 
     CMessage m_;
@@ -922,7 +909,7 @@ void LBAgent::HandleAccept(CMessage msg, PeerNodePtr peer)
     ss_.str("CheckInvariant");
     m_.SetHandler("lb."+ ss_.str());
     ss_.clear();
-    //call state collection if being leader, otherwise send msg to leader for checking invariant
+    //set invariant flag to be true if being leader, otherwise send msg to leader for checking invariant
     if (m_Leader == GetUUID())
     {
         //set m_invFlag
@@ -973,6 +960,13 @@ void LBAgent::HandleCollectedState(CMessage msg, PeerNodePtr peer)
  	    peercount++;
             agg_gateway += boost::lexical_cast<double>(v.second.data());
 	}
+
+    //calculate gross power flow for physical invariant
+    double GrossP = 0;
+    for (int i = 1; i < m_AllPeers.size(); i++)
+    {
+        GrossP +=  (powerLevel[i])*(powerLevel[i]);
+    } 
 
     //calculate total excess or draw of the system
     if (m_gFlag == true)
@@ -1031,16 +1025,20 @@ void LBAgent::HandleCollectedState(CMessage msg, PeerNodePtr peer)
                                  " Current highest supply is " << m_highestSupply <<std::endl;
         }
         m_prevSupply = m_highestSupply;
-/*
+
         //check physical invariant 
-        device::SettingValue OmegaValue = m_phyDevManager->GetValue("Omega", "frequency", &device::SumValues);
-        device::SettingValue ThetaValue = m_phyDevManager->GetValue("Theta", "angle", &device::SumValues); 
-        device::SettingValue KeiValue = m_phyDevManager->GetValue("Kei", "lost", &device::SumValues);
+        device::SettingValue OmegaValue = m_phyDevManager->GetValue("Omega", "frequency", std::plus<device::SettingValue>());
+
         Logger.Status << "-----------Omega is " << OmegaValue << "--------------" << std::endl;
-        Logger.Status << "-----------Theta is " << ThetaValue << "--------------" << std::endl;
-        Logger.Status << "-----------Kei is " << KeiValue << "--------------" << std::endl;
-*/
+
+
         //TODO: physical invariant equation
+
+        double w = boost::lexical_cast<double>(OmegaValue);
+        double left = (0.025*w + 1)*(w - 376.8)*(w-376.8) + (w - 376.8)*(0.0075*GrossP);
+        double right = 100*agg_gateway*(w-376.8);
+        Logger.Status << "Physical Invariant Formular : left is " << left
+                      << "  right is " << right;
 
         //set invariant checking flag to false
         m_invFlag = false;
