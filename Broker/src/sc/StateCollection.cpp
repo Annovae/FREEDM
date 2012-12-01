@@ -238,7 +238,7 @@ void SCAgent::StateResponse()
 
     if (m_countmarker == m_AllPeers.size() && m_NotifyToSave == false)
     {
-        Logger.Status << "*******************************************" << std::endl;
+        Logger.Status << "****************CollectedStates***************************" << std::endl;
         //prepare collect states
         Logger.Info << "Sending requested state back to " << m_module << " module" << std::endl;
         m_.SetHandler(m_module+".CollectedState");
@@ -249,13 +249,13 @@ void SCAgent::StateResponse()
             {
                 if ((*it).second.get<std::string>("sc.type")== m_valueType)
                 {
-                    Logger.Status << (*it).first.first << "+++" << (*it).first.second << "    "
+                    Logger.Status << "Marker: "<<(*it).first.first << " + " << (*it).first.second << "  Value:"
                                   << (*it).second.get<std::string>("sc.value") << std::endl;
                     m_.m_submessages.add("CollectedState.state.value", (*it).second.get<std::string>("sc.value"));
                 }
                 else if ((*it).second.get<std::string>("sc.type")== "Message")
                 {
-                    Logger.Status << (*it).second.get<std::string>("sc.transit.value") << std::endl;
+                    Logger.Status << "Transit message: " <<(*it).second.get<std::string>("sc.transit.value") << std::endl;
                     m_.m_submessages.add("CollectedState.intransit.value", (*it).second.get<std::string>("sc.transit.value"));
                 }
             }
@@ -320,9 +320,9 @@ void SCAgent::TakeSnapshot(std::string deviceType, std::string valueType)
 {
     Logger.Debug << __PRETTY_FUNCTION__ << std::endl;
     device::SettingValue PowerValue;
-    //Logger.Status << "&&&&&&&&&&&&&&&&&&&&&& call NetValue funciton &&&&&&&&&&&&&&" << std::endl;
     PowerValue = m_phyDevManager->GetValue(deviceType, valueType, std::plus<device::SettingValue>());
-    Logger.Status << "&&&&&&&&&&&&&&&         " << PowerValue << "       &&&&&&&&&&&&" << std::endl;
+    Logger.Status << "DeviceType: " << deviceType << "  ValueType: " << valueType 
+                  << "  PowerValue: " << PowerValue << std::endl;
     //save state
     m_curstate.put("sc.type", valueType);
     m_curstate.put("sc.value", PowerValue);
@@ -614,17 +614,19 @@ void SCAgent::HandleMarker(CMessage msg, PeerNodePtr peer)
     // read the incoming version from marker
     incomingVer_.first = pt.get<std::string>("sc.source");
     incomingVer_.second = pt.get<unsigned int>("sc.id");
+    m_deviceType = pt.get<std::string>("sc.deviceType");
+    m_valueType = pt.get<std::string>("sc.valueType");
 
     if (m_curversion.first == "default")
         //peer receives first marker
     {
-        Logger.Status << "---------------------------first maker with default state ---------------------" << std::endl;
+        Logger.Status << "------------------------first maker with default state ----------------" << std::endl;
         SaveForward(incomingVer_, msg);
     }//first receive marker
     else if (m_curversion == incomingVer_ && m_curversion.first == GetUUID())
         //initiator receives his marker before
     {
-        Logger.Status << "----------------------------Initiator receives his marker----------------------" << std::endl;
+        Logger.Status << "------------------------Initiator receives his marker------------------" << std::endl;
         //number of marker is increased by 1
         m_countmarker++;
 
@@ -637,7 +639,7 @@ void SCAgent::HandleMarker(CMessage msg, PeerNodePtr peer)
     else if (m_curversion == incomingVer_ && m_curversion.first != GetUUID())
         //peer receives this marker before
     {
-        Logger.Status << "----------------------------Peer receives marker before-------------------------" << std::endl;
+        Logger.Status << "------------------------Peer receives marker before--------------------" << std::endl;
         //number of marker is increased by 1
         m_countmarker++;
 
@@ -710,7 +712,7 @@ void SCAgent::HandleState(CMessage msg, PeerNodePtr peer)
         BOOST_FOREACH(ptree::value_type &v, pt.get_child("sc.types"))
         {
             ptree sub_pt1 = v.second;
-            Logger.Debug << "type: " << sub_pt1.get<std::string>("valueType") <<
+            Logger.Status << "type: " << sub_pt1.get<std::string>("valueType") <<
                             "       value: " << sub_pt1.get<std::string>("value") << std::endl;
             if (sub_pt1.get<std::string>("valueType") == "Message")
             {
