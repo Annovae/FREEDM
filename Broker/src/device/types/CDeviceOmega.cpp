@@ -35,14 +35,14 @@ CLocalLogger Logger(__FILE__);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// CDeviceSst::CDeviceOmega(Identifier, IPhysicalAdapter::AdapterPtr)
+/// CDeviceOmega::CDeviceOmega(Identifier, IPhysicalAdapter::AdapterPtr)
 ///
 /// @description Instantiates a device.
 ///
 /// @param device The unique device identifier for the device.
 /// @param adapter The adapter that implements operations for this device.
 ////////////////////////////////////////////////////////////////////////////////
-CDeviceSst::CDeviceOmega(const Identifier device,
+CDeviceOmega::CDeviceOmega(const Identifier device,
         IPhysicalAdapter::Pointer adapter)
 : IDevice(device, adapter)
 {
@@ -50,23 +50,23 @@ CDeviceSst::CDeviceOmega(const Identifier device,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// CDeviceSst::~CDeviceOmega()
+/// CDeviceOmega::~CDeviceOmega()
 ///
 /// @description Virtual destructor for derived classes.
 ////////////////////////////////////////////////////////////////////////////////
-CDeviceSst::~CDeviceOmega()
+CDeviceOmega::~CDeviceOmega()
 {
     Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// CDeviceSst::GetFrequency() const
+/// CDeviceOmega::GetFrequency() const
 ///
 /// @description Retrieve the frequency value of this Omega.
 ///
 /// @return The frequency of this Omega.
 ////////////////////////////////////////////////////////////////////////////////
-SettingValue CDeviceSst::GetFrequency() const
+SettingValue CDeviceOmega::GetFrequency() const
 {
     Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
     return Get("frequency");
