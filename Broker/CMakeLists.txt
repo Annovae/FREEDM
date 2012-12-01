@@ -2,11 +2,11 @@
 cmake_minimum_required(VERSION 2.6)
 project(Broker)
 
-set(ALT_BUILD_VERSION "Unversioned")
+#set(ALT_BUILD_VERSION 1.2.0)
 # Build Versioning
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/")
-include(GetGitRevisionDescription)
-get_git_head_revision(GIT_REFSPEC GIT_SHA1)
+#list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMakeModules/")
+#include(GetGitRevisionDescription)
+#get_git_head_revision(GIT_REFSPEC GIT_SHA1)
 
 # configurable project options
 # TUTORIAL on how to add a new option:
@@ -17,8 +17,9 @@ option(CUSTOMNETWORK "for network.xml support" OFF)
 option(DATAGRAM "for UDP Datagram service w/o sequencing" OFF)
 option(SHOW_MESSAGES "Enable help messages during cmake execution" ON)
 option(SHOW_WARNINGS "warnings displayed during project compile" ON)
-option(USE_DEVICE_PSCAD "Enable the PSCAD simulation interface" OFF)
+option(USE_DEVICE_PSCAD "Enable the PSCAD simulation interface" ON)
 option(USE_DEVICE_RTDS "Enable the RTDS simulation interface" OFF)
+option(RUN_DOXYGEN "run Doxygen after project compile" ON)
 
 # Check for a variety of conditions that should generate an error.
 if(!LINUX)
@@ -51,14 +52,14 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
 
 # set C++ compiler flags
+set(WARNING_FLAGS "-w")
 if(SHOW_WARNINGS)
     set(WARNING_FLAGS "-Wall -Wextra")
 endif(SHOW_WARNINGS)
 
 # Run -DCMAKE_BUILD_TYPE=DEBUG if you need debugging -g
-# Run -DCMAKE_BUILD_TYPE=RELEASE for optimization -O2
-set(CMAKE_CXX_FLAGS "-pedantic -std=c++98 ${WARNING_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "-lpthread")
+# Don't use -DCMAKE_BUILD_TYPE=RELEASE - it makes things not work =/
+set(CMAKE_CXX_FLAGS "-pedantic -std=c++98 -pthread ${WARNING_FLAGS}")
 
 # generate the configuration file
 CONFIGURE_FILE(
@@ -93,4 +94,6 @@ target_link_libraries(
 )
 
 # run Doxygen
-add_custom_command(TARGET PosixBroker POST_BUILD COMMAND ./builddocs.sh)
+if(RUN_DOXYGEN)
+    add_custom_command(TARGET PosixBroker POST_BUILD COMMAND ./builddocs.sh)
+endif(RUN_DOXYGEN)
