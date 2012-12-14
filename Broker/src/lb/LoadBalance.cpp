@@ -74,7 +74,7 @@ namespace broker {
 
 namespace lb {
 
-const int P_Migrate = 10;
+const int P_Migrate = 1;
 
 namespace {
 
@@ -132,6 +132,8 @@ LBAgent::LBAgent(std::string uuid_,
     m_invFlag = false;
     //
     m_inProgress = false;
+    //initialize imbalanced power K
+    Kei = 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -844,6 +846,8 @@ void LBAgent::HandleDrafting(CMessage msg, PeerNodePtr peer)
                     }
                     Logger.Status << "Step_Pstar() is called..." << std::endl;
                     Step_PStar();
+		    //update imbalanced power K
+		    Kei += P_Migrate; 
                 }
                 else
                 {
@@ -890,6 +894,8 @@ void LBAgent::HandleAccept(CMessage msg, PeerNodePtr peer)
         {
             Logger.Status << "Step_Pstar() is called..." << std::endl;
             Step_PStar();
+	    //update imbalanced power K
+	    Kei += P_Migrate;
         }
         else
            Desd_PStar();
@@ -1031,12 +1037,12 @@ void LBAgent::HandleCollectedState(CMessage msg, PeerNodePtr peer)
 
         Logger.Status << "-----------Omega is " << OmegaValue << "--------------" << std::endl;
 
-
+	Logger.Status << "-----------Kei is " << Kei << "----------------" << std::endl;
         //TODO: physical invariant equation
 
         double w = boost::lexical_cast<double>(OmegaValue);
         double left = (0.025*w + 1)*(w - 376.8)*(w-376.8) + (w - 376.8)*(0.0075*GrossP);
-        double right = 100*agg_gateway*(w-376.8);
+        double right = 100*Kei*(w-376.8);
         Logger.Status << "Physical Invariant Formular : left is " << left
                       << "  right is " << right;
 

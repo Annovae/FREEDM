@@ -184,6 +184,8 @@ class LBAgent
         double m_highestSupply;
         ///
         double m_prevSupply;
+	///imbalanced power
+	int Kei;
 
         // Peer lists
         /// Set of known peers in Demand State
