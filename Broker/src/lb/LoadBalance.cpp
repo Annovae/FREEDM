@@ -74,7 +74,7 @@ namespace broker {
 
 namespace lb {
 
-const int P_Migrate = 10;
+const int P_Migrate = 1;
 
 namespace {
 
