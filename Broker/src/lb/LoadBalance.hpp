@@ -7,7 +7,7 @@
 ///
 /// @description  DGI Load Balancing Module
 ///
-/// @functions  
+/// @functions
 ///     LBAgent
 ///     LB
 ///     AddPeer
@@ -63,27 +63,30 @@ using boost::property_tree::ptree;
 
 using namespace boost::asio;
 
-namespace freedm {
+namespace freedm
+{
 
-namespace broker {
+namespace broker
+{
 
-namespace lb {
+namespace lb
+{
 
 const double NORMAL_TOLERANCE = 0.5;
-const unsigned int LOAD_TIMEOUT = 4000; //milliseconds
+const unsigned int LOAD_TIMEOUT = 280000; //milliseconds
 const unsigned int STATE_TIMEOUT = 5000; //milliseconds
 const unsigned int PSTAR_TIMEOUT = 5000; //milliseconds
 
 //////////////////////////////////////////////////////////
 /// class LBAgent
 ///
-/// @description 
+/// @description
 /// Declaration of LBAgent class for load balancing algorithm
 /////////////////////////////////////////////////////////
 class LBAgent
-    : public IReadHandler,
-      public IPeerNode,
-      public IAgent< boost::shared_ptr<IPeerNode> >
+        : public IReadHandler,
+        public IPeerNode,
+        public IAgent< boost::shared_ptr<IPeerNode> >
 {
     public:
         /// Default constructor
@@ -91,23 +94,23 @@ class LBAgent
         /// Constructor for using this object as a module
         LBAgent(std::string uuid_,
                 CBroker &broker,
-                device::CPhysicalDeviceManager::Pointer 
-                    m_phyManager);
-        /// Destructor for the module  
+                device::CPhysicalDeviceManager::Pointer
+                m_phyManager);
+        /// Destructor for the module
         ~LBAgent();
-
+        
         /// Main loop of the algorithm called from PosixBroker
         int Run();
-
+        
     private:
-        enum EStatus { SUPPLY, NORM, DEMAND }; 
-         // Routines
-        /// Advertises a draft request to demand nodes on Supply 
+        enum EStatus { SUPPLY, NORM, DEMAND };
+        // Routines
+        /// Advertises a draft request to demand nodes on Supply
         void SendDraftRequest();
-        /// Maintains the load table  
+        /// Maintains the load table
         void LoadTable();
         /// Monitors the demand changes and trigers the algorithm accordingly
-        void LoadManage();        
+        void LoadManage();
         /// Triggers the LoadManage routine on timeout
         void LoadManage( const boost::system::error_code& err );
         /// Starts the state timer and restarts on timeout
@@ -124,22 +127,24 @@ class LBAgent
         void CollectState();
         /// Sends the computed Normal to group members
         void SendNormal(double normal);
-
+        
         // Handlers
         /// Handles the incoming messages according to the message label
         virtual void HandleAny(CMessage msg,PeerNodePtr peer);
-        void HandlePeerList(CMessage msg, PeerNodePtr peer); 
-        void HandleDemand(CMessage msg, PeerNodePtr peer); 
-        void HandleNormal(CMessage msg, PeerNodePtr peer); 
-        void HandleSupply(CMessage msg, PeerNodePtr peer); 
-        void HandleRequest(CMessage msg, PeerNodePtr peer); 
-        void HandleYes(CMessage msg, PeerNodePtr peer); 
-        void HandleNo(CMessage msg, PeerNodePtr peer); 
-        void HandleDrafting(CMessage msg, PeerNodePtr peer); 
-        void HandleAccept(CMessage msg, PeerNodePtr peer); 
-        void HandleCollectedState(CMessage msg, PeerNodePtr peer); 
-        void HandleComputedNormal(CMessage msg, PeerNodePtr peer); 
+        void HandlePeerList(CMessage msg, PeerNodePtr peer);
+        void HandleDemand(CMessage msg, PeerNodePtr peer);
+        void HandleNormal(CMessage msg, PeerNodePtr peer);
+        void HandleSupply(CMessage msg, PeerNodePtr peer);
+        void HandleRequest(CMessage msg, PeerNodePtr peer);
+        void HandleYes(CMessage msg, PeerNodePtr peer);
+        void HandleNo(CMessage msg, PeerNodePtr peer);
+        void HandleDrafting(CMessage msg, PeerNodePtr peer);
+        void HandleAccept(CMessage msg, PeerNodePtr peer);
+        void HandleCollectedState(CMessage msg, PeerNodePtr peer);
+        void HandleComputedNormal(CMessage msg, PeerNodePtr peer);
         void HandleCheckInvariant(CMessage msg, PeerNodePtr peer);
+        
+        void HandleDisableMig(CMessage msg, PeerNodePtr peer);
         
         /// Adds a new node to the list of known peers using its UUID
         PeerNodePtr AddPeer(std::string uuid);
@@ -147,7 +152,7 @@ class LBAgent
         PeerNodePtr AddPeer(PeerNodePtr peer);
         /// Returns a pointer to the peer based on its UUID
         PeerNodePtr GetPeer(std::string uuid);
-
+        
         // Variables
         /// Calculated Normal
         double m_Normal;
@@ -167,12 +172,12 @@ class LBAgent
         float   m_CalcGateway;
         /// Demand cost of this node in Demand
         float   m_DemandVal;
-        /// Current Demand state of this node  
+        /// Current Demand state of this node
         EStatus   m_Status;
         /// Previous demand state of this node before state change
-        EStatus   m_prevStatus;  
+        EStatus   m_prevStatus;
         
-
+        
         ///Variables for checking invariant
         ///flag for calculating g - supply or draw of the system
         bool m_gFlag;
@@ -184,7 +189,11 @@ class LBAgent
         double m_highestSupply;
         ///
         double m_prevSupply;
-
+        //imbalanced power
+        int Kei;
+        //guard for power migration
+        bool m_makeMig;
+        
         // Peer lists
         /// Set of known peers in Demand State
         PeerSet     m_HiNodes;
@@ -192,22 +201,22 @@ class LBAgent
         PeerSet     m_NoNodes;
         /// Set of known peers in Supply State
         PeerSet     m_LoNodes;
-        /// Set of all the known peers 
+        /// Set of all the known peers
         PeerSet     m_AllPeers;
-
+        
         // Instance of physical device manager
-        device::CPhysicalDeviceManager::Pointer 
-            m_phyDevManager;
-
-        // Power migration functions 
+        device::CPhysicalDeviceManager::Pointer
+        m_phyDevManager;
+        
+        // Power migration functions
         /// 'Power migration' by stepping up/down P* by a constant value
         void Step_PStar();
         /// 'Power migration' by stepping up/down P* basing on the demand cost
         void PStar(device::SettingValue DemandValue);
         /// 'Power migration' through controlling DESD devices
-        void Desd_PStar();   
+        void Desd_PStar();
         
-        // IO and Timers 
+        // IO and Timers
         /// Timer until check of demand state change
         CBroker::TimerHandle     m_GlobalTimer;
         /// Timer until next periodic state collection
@@ -218,7 +227,7 @@ class LBAgent
         CBroker &m_broker;
         bool m_active;
         bool m_sstExists;
-
+        
         bool m_inProgress;
 };
 
