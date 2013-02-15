@@ -159,7 +159,29 @@ class LBAgent
         EStatus   m_Status;
         /// Previous demand state of this node before state change
         EStatus   m_prevStatus;  
-   
+  
+	//ICC
+	CMessage m_locallamda(float lamda);
+	/// Incremental Cost Consensus Algorithm
+	float m_lamda;
+	float m_alpha;
+	float m_beta;
+	float m_gama;
+	float m_PGen;
+	float m_deltaP;
+	float m_epsilon;
+	//functions
+	void LeaderICC();
+	void FollowerICC();
+	void Update(float lamda);
+	//network topology parameters (three nodes with fully connected)
+ 	std::map<int, float> m_var;
+ 	std::map<int, float>::iterator itt;
+	//container to save lamda and UUID
+	std::map<std::string, float> m_collectlamda;
+	std::map<std::string, float> m_collectvar;
+	std::map<std::string, float>::iterator it;
+ 
         // Peer lists
         /// Set of known peers in Demand State
         PeerSet     m_HiNodes;
