@@ -119,6 +119,8 @@ LBAgent::LBAgent(std::string uuid_, CBroker &broker):
     RegisterSubhandle("lb.CollectedState",boost::bind(&LBAgent::HandleCollectedState, this, _1, _2));
     RegisterSubhandle("lb.ComputedNormal",boost::bind(&LBAgent::HandleComputedNormal, this, _1, _2));
     RegisterSubhandle("any",boost::bind(&LBAgent::HandleAny, this, _1, _2));
+    RegisterSubhandle("lb.lamda", boost::bind(&LBAgent::HandleLambda, this, _1, _2));
+    RegisterSubhandle("lb.LamdaUpdate", boost::bind(&LBAgent::HandleUpdate, this, _1, _2));
     m_sstExists = false;
 }
 
@@ -213,10 +215,11 @@ LBAgent::PeerNodePtr LBAgent::GetPeer(std::string uuid)
 /// @parameter: lamda
 /// @return: A CMessage with the value of local lamda.
 ///////////////////////////////////////////////////////////////////////////////
-freedm::broker::CMessage lbAgent::m_locallamda(float lamda)
+freedm::broker::CMessage LBAgent::m_locallamda(float lamda)
 {
     freedm::broker::CMessage m_;
-    m_.m_submessages.put("lb","lamda");
+    //m_.m_submessages.put("lb","lamda");
+    m_.SetHandler("lb.lamda");
     m_.m_submessages.put("lb.source", GetUUID());
     m_.m_submessages.put("lb.llamda", boost::lexical_cast<std::string>(lamda));
     return m_;
@@ -646,7 +649,7 @@ void LBAgent::SendDraftRequest()
 ///   supply nodes
 ///
 ////////////////////////////////////////////////////////////
-void lbAgent::LeaderICC()
+void LBAgent::LeaderICC()
 {
     Logger.Debug << __PRETTY_FUNCTION__ << std::endl;
     //update lamda according to equation 12
@@ -676,7 +679,7 @@ void lbAgent::LeaderICC()
     PGen_total += m_PGen;
     m_deltaP = m_PDemand - PGen_total;
     //calculate new lamda
-    foreach(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
+    BOOST_FOREACH(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
     {
         uuid_ = peer_->GetUUID();
         m_lamda += (m_collectlamda.find(uuid_)->second)*(m_collectvar.find(uuid_)->second);
@@ -704,7 +707,7 @@ void lbAgent::LeaderICC()
 /// post: Follower update its lamda and print out PGen
 ///
 ////////////////////////////////////////////////////////////
-void lbAgent::FollowerICC()
+void LBAgent::FollowerICC()
 {
     Logger.Debug << __PRETTY_FUNCTION__ << std::endl;
     //update lamda according to equation 10
@@ -724,7 +727,7 @@ void lbAgent::FollowerICC()
         }
     */
     //calculate new lamda
-    foreach(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
+    BOOST_FOREACH(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
     {
         uuid_ = peer_->GetUUID();
         m_lamda += (m_collectlamda.find(uuid_)->second)*(m_collectvar.find(uuid_)->second);
@@ -750,11 +753,12 @@ void lbAgent::FollowerICC()
 /// post: send lamda update message out
 /// parameter: float lamda
 ////////////////////////////////////////////////////////////
-void lbAgent::Update(float lamda, float PGen)
+void LBAgent::Update(float lamda, float PGen)
 {
     //send lamda update request to other nodes
     freedm::broker::CMessage m_;
-    m_.m_submessages.put("lb", "LamdaUpdate");
+    //m_.m_submessages.put("lb", "LamdaUpdate");
+    m_.SetHandler("lb.LamdaUpdate");
     m_.m_submessages.put("lb.source", GetUUID());
     m_.m_submessages.put("lb.lamda", boost::lexical_cast<std::string>(lamda));
     //isn't leader, send PGen as well
@@ -762,7 +766,7 @@ void lbAgent::Update(float lamda, float PGen)
     //{
     m_.m_submessages.put("lb.PGen", boost::lexical_cast<std::string>(PGen));
     //}
-    foreach( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
+    BOOST_FOREACH( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
     {
         if (p_->GetUUID() != GetUUID())
         {
@@ -868,7 +872,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
     int peerNum = m_AllPeers.size();
     Logger.Status << "There are " << peerNum << " nodes in system: " << std::endl;
     //print out peerlist
-    foreach( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
+    BOOST_FOREACH( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
     Logger.Status << p_->GetUUID() << std::endl;
     //clear network variable container
     m_var.clear();
@@ -881,7 +885,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
     if (peerNum == 3)
     {
         //save network variables to container m_var<int, float>
-        foreach(ptree::value_type &v, pt.get_child("Init.networkTop.fullCon.threeNodes"))
+        BOOST_FOREACH(ptree::value_type &v, pt.get_child("Init.networkTop.fullCon.threeNodes"))
         {
             netVar =  boost::lexical_cast<float>(v.second.data());
             m_var.insert(std::pair<int, float>(i, netVar));
@@ -895,7 +899,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
         //first variable assigned to local node
         m_collectvar.insert(std::pair<std::string, float>(GetUUID(), m_var.find(1)->second));
         i = 2;
-        foreach(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
+        BOOST_FOREACH(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
         {
             if (peer_->GetUUID() != GetUUID())
             {
@@ -919,7 +923,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
         freedm::broker::CMessage m_ = m_locallamda(m_lamda);
         //attached power generation value
         m_.m_submessages.put("lb.lPGen", boost::lexical_cast<std::string>(m_PGen));
-        foreach( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
+        BOOST_FOREACH( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
         {
             if ( p_->GetUUID() != GetUUID())
             {
@@ -1279,8 +1283,11 @@ void LBAgent::HandleComputedNormal(MessagePtr msg, PeerNodePtr peer)
 // --------------------------------------------------------------
 // You received a lamda value from the source (ICC)
 // --------------------------------------------------------------
-else if (pt.get<std::string>("lb") == "lamda")
+//else if (pt.get<std::string>("lb") == "lamda")
+void LBAgent::HandleLambda (MessagePtr msg, PeerNodePtr peer)
 {
+    Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
+    ptree &pt = msg->GetSubMessages();
     //test
     Logger.Status << "Are we here?" << std::endl;
     std::string uuid_ = pt.get<std::string>("lb.source");
@@ -1302,18 +1309,21 @@ else if (pt.get<std::string>("lb") == "lamda")
 // --------------------------------------------------------------
 // You received a lamda update message from the source
 // --------------------------------------------------------------
-
-else if (pt.get<std::string>("lb") == "LamdaUpdate" )
+//else if (pt.get<std::string>("lb") == "LamdaUpdate" )
+void LBAgent::HandleUpdate (MessagePtr msg, PeerNodePtr peer)
 {
+    Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
+    ptree &pt = msg->GetSubMessages();
+    std::string uuid_ = pt.get<std::string>("lb.source");
     float leaderlamda;
     leaderlamda = boost::lexical_cast<float>(pt.get<std::string>("lb.lamda"));
     //insert new leaderlamda in collectlamda
-    m_collectlamda.insert(std::pair<std::string, float>(line_, leaderlamda));
+    m_collectlamda.insert(std::pair<std::string, float>(uuid_, leaderlamda));
     
     if (GetUUID() == m_Leader)
     {
         float followerPGen = boost::lexical_cast<float>(pt.get<std::string>("lb.PGen"));
-        m_collectPGen.insert(std::pair<std::string, float>(line_, followerPGen));
+        m_collectPGen.insert(std::pair<std::string, float>(uuid_, followerPGen));
     }
     
     if (m_collectlamda.size() == m_AllPeers.size() && m_collectvar.size() == m_AllPeers.size() && GetUUID() == m_Leader && m_AllPeers.size()>2)
