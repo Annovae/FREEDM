@@ -118,9 +118,10 @@ LBAgent::LBAgent(std::string uuid_, CBroker &broker):
     RegisterSubhandle("lb.accept",boost::bind(&LBAgent::HandleAccept, this, _1, _2));
     RegisterSubhandle("lb.CollectedState",boost::bind(&LBAgent::HandleCollectedState, this, _1, _2));
     RegisterSubhandle("lb.ComputedNormal",boost::bind(&LBAgent::HandleComputedNormal, this, _1, _2));
-    RegisterSubhandle("any",boost::bind(&LBAgent::HandleAny, this, _1, _2));
-    RegisterSubhandle("lb.lamda", boost::bind(&LBAgent::HandleLambda, this, _1, _2));
+    //always register message handler before "any"
+    RegisterSubhandle("lb.lamda", boost::bind(&LBAgent::HandleLamda, this, _1, _2));
     RegisterSubhandle("lb.LamdaUpdate", boost::bind(&LBAgent::HandleUpdate, this, _1, _2));
+    RegisterSubhandle("any", boost::bind(&LBAgent::HandleAny, this, _1, _2));
     m_sstExists = false;
 }
 
@@ -157,9 +158,9 @@ int LBAgent::Run()
     m_epsilon = pt.get<float>("Init.costVar.epsilon");
     m_PGen = pt.get<float>("Init.costVar.PGen");
     Logger.Status << "ICC cost variables are obtained from xml are: "
-    << m_lamda << ", " << m_alpha << ", "
-    << m_beta << ", " << m_gama << ", "
-    << m_epsilon << ", " << m_PGen << std::endl;
+                  << m_lamda << ", " << m_alpha << ", "
+                  << m_beta << ", " << m_gama << ", "
+                  << m_epsilon << ", " << m_PGen << std::endl;
     //Initially nodes save local lamda into container(ICC)
     Logger.Status << "Save local lamda into local container" << std::endl;
     m_collectlamda.insert(std::pair<std::string, float>(GetUUID(), m_lamda));
@@ -212,13 +213,12 @@ LBAgent::PeerNodePtr LBAgent::GetPeer(std::string uuid)
 /// @description: Creates a message containing local lamda from this node.
 /// @pre: This node has a local lamda.
 /// @post: No Change.
-/// @parameter: lamda
+/// @param lamda: the lamda to be sent
 /// @return: A CMessage with the value of local lamda.
 ///////////////////////////////////////////////////////////////////////////////
-freedm::broker::CMessage LBAgent::m_locallamda(float lamda)
+CMessage LBAgent::m_locallamda(float lamda)
 {
     freedm::broker::CMessage m_;
-    //m_.m_submessages.put("lb","lamda");
     m_.SetHandler("lb.lamda");
     m_.m_submessages.put("lb.source", GetUUID());
     m_.m_submessages.put("lb.llamda", boost::lexical_cast<std::string>(lamda));
@@ -653,6 +653,7 @@ void LBAgent::LeaderICC()
 {
     Logger.Debug << __PRETTY_FUNCTION__ << std::endl;
     //update lamda according to equation 12
+    Logger.Status << "------leader ICC------" << std::endl;
     std::string uuid_;
     m_lamda = 0;
     /*
@@ -694,6 +695,8 @@ void LBAgent::LeaderICC()
     //clear collectlamda container
     m_collectlamda.clear();
     m_collectPGen.clear();
+
+    countlambda = 0;
     //insert new one
     m_collectlamda.insert(std::pair<std::string, float>(GetUUID(), m_lamda));
     //send update lamda out
@@ -740,6 +743,8 @@ void LBAgent::FollowerICC()
     << m_PGen << std::endl;
     //update collectlamda container
     m_collectlamda.clear();
+    countlambda = 0;
+
     m_collectlamda.insert(std::pair<std::string, float>(GetUUID(), m_lamda));
     //send update lamda out
     Update(m_lamda, m_PGen);
@@ -909,20 +914,21 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
         }
     }
     
-    /*
-            //print out network variables
-            for(it = m_collectvar.begin(); it != m_collectvar.end(); it++)
-            {
-                Logger.Status << (*it).first << " --------- " << (*it).second << std::endl;
-            }
-    */
     
-    //if at least three nodes, Initially nodes send lamda to other nodes
-    if ( peerNum > 2 )
+    //print out network variables
+    for(it = m_collectvar.begin(); it != m_collectvar.end(); it++)
     {
-        freedm::broker::CMessage m_ = m_locallamda(m_lamda);
+        Logger.Status << (*it).first << " --------- " << (*it).second << std::endl;
+    }
+    
+    countlambda = 0;
+    //if at least three nodes, Initially peer nodes send lamda to leader node and other peers
+    if ( peerNum > 2 && m_Leader != GetUUID())
+    {
+        CMessage m_ = m_locallamda(m_lamda);
         //attached power generation value
         m_.m_submessages.put("lb.lPGen", boost::lexical_cast<std::string>(m_PGen));
+
         BOOST_FOREACH( PeerNodePtr p_, m_AllPeers | boost::adaptors::map_values)
         {
             if ( p_->GetUUID() != GetUUID())
@@ -930,6 +936,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
                 try
                 {
                     p_->Send(m_);
+		    Logger.Status << "---------sending out its lamda" << std::endl;
                 }
                 catch (boost::system::system_error& e)
                 {
@@ -938,7 +945,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
             }
         }
     }
-    
+
     //ICC
     //--------------------------------------------------------------------------------//
 }
@@ -1256,7 +1263,7 @@ void LBAgent::HandleCollectedState(MessagePtr msg, PeerNodePtr peer)
     //generate a fake demand
     m_PDemand = 850.0;
     
-    if (GetUUID() == m_Leader && m_AllPeers.size() > 2 && m_collectvar.size() == m_AllPeers.size() && m_collectlamda.size() == m_AllPeers.size())
+    if (GetUUID() == m_Leader && countlambda == m_AllPeers.size()-1)
     {
         LeaderICC();
     }//end if(m_Leader)
@@ -1281,10 +1288,10 @@ void LBAgent::HandleComputedNormal(MessagePtr msg, PeerNodePtr peer)
 //------------------------------------------------------------------------//
 //ICC
 // --------------------------------------------------------------
-// You received a lamda value from the source (ICC)
+// Leader received a lamda value from the follower (ICC)
 // --------------------------------------------------------------
-//else if (pt.get<std::string>("lb") == "lamda")
-void LBAgent::HandleLambda (MessagePtr msg, PeerNodePtr peer)
+//
+void LBAgent::HandleLamda(MessagePtr msg, PeerNodePtr peer)
 {
     Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
     ptree &pt = msg->GetSubMessages();
@@ -1298,19 +1305,17 @@ void LBAgent::HandleLambda (MessagePtr msg, PeerNodePtr peer)
     float PGval_ = pt.get<float>("lb.lPGen");
     
     //leader also need PGen
-    if (GetUUID() == m_Leader)
-    {
-        m_collectPGen.insert(std::pair<std::string, float>(uuid_, PGval_));
-        Logger.Status << "Store another PGen: " << PGval_ << " from " << uuid_ << std::endl;
-    }
+    m_collectPGen.insert(std::pair<std::string, float>(uuid_, PGval_));
+    Logger.Status << "Store another PGen: " << PGval_ << " from " << uuid_ << std::endl;
+    countlambda++;
 }
 
 
 // --------------------------------------------------------------
 // You received a lamda update message from the source
 // --------------------------------------------------------------
-//else if (pt.get<std::string>("lb") == "LamdaUpdate" )
-void LBAgent::HandleUpdate (MessagePtr msg, PeerNodePtr peer)
+//
+void LBAgent::HandleUpdate(MessagePtr msg, PeerNodePtr peer)
 {
     Logger.Trace << __PRETTY_FUNCTION__ << std::endl;
     ptree &pt = msg->GetSubMessages();
@@ -1319,19 +1324,19 @@ void LBAgent::HandleUpdate (MessagePtr msg, PeerNodePtr peer)
     leaderlamda = boost::lexical_cast<float>(pt.get<std::string>("lb.lamda"));
     //insert new leaderlamda in collectlamda
     m_collectlamda.insert(std::pair<std::string, float>(uuid_, leaderlamda));
-    
+    countlambda ++;
     if (GetUUID() == m_Leader)
     {
         float followerPGen = boost::lexical_cast<float>(pt.get<std::string>("lb.PGen"));
         m_collectPGen.insert(std::pair<std::string, float>(uuid_, followerPGen));
     }
     
-    if (m_collectlamda.size() == m_AllPeers.size() && m_collectvar.size() == m_AllPeers.size() && GetUUID() == m_Leader && m_AllPeers.size()>2)
+    if (GetUUID() == m_Leader && countlambda == m_AllPeers.size()-1)
     {
         LeaderICC();
     }
     
-    if (m_collectlamda.size() == m_AllPeers.size() && m_collectvar.size() == m_AllPeers.size() && GetUUID() != m_Leader && m_AllPeers.size()>2)
+    if (GetUUID() != m_Leader && countlambda == m_AllPeers.size()-1)
     {
         FollowerICC();
     }

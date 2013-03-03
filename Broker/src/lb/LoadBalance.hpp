@@ -131,7 +131,7 @@ class LBAgent
         void HandleCollectedState(MessagePtr msg, PeerNodePtr peer); 
         void HandleComputedNormal(MessagePtr msg, PeerNodePtr peer); 
         /// ICC handlers
-	void HandleLambda(MessagePtr msg, PeerNodePtr peer);
+	void HandleLamda(MessagePtr msg, PeerNodePtr peer);
 	void HandleUpdate(MessagePtr msg, PeerNodePtr peer);
  
         /// Adds a new peer by a pointer
@@ -173,6 +173,10 @@ class LBAgent
 	float m_PGen;
 	float m_deltaP;
 	float m_epsilon;
+
+	//
+	unsigned int countlambda;
+
 	//functions
 	void LeaderICC();
 	void FollowerICC();
