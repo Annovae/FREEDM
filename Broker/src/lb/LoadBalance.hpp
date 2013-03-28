@@ -174,13 +174,21 @@ class LBAgent
 	float m_deltaP;
 	float m_epsilon;
 
-	//
+	/// Previous lamda
+	float m_preLamda;
+
+	/// number of lamda received
 	unsigned int countlambda;
+
+	/// number of lamda update cycle
+	unsigned int countcycle;	
 
 	//functions
 	void LeaderICC();
 	void FollowerICC();
 	void Update(float lamda, float PGen);
+	bool isEqual(float preLamda, float curLamda);
+
 	//network topology parameters (three nodes with fully connected)
  	std::map<int, float> m_var;
  	std::map<int, float>::iterator itt;
@@ -190,7 +198,7 @@ class LBAgent
 	std::map<std::string, float>::iterator it;
 	std::map<std::string, float> m_collectPGen;
 	float m_PDemand;
- 
+ 	
         // Peer lists
         /// Set of known peers in Demand State
         PeerSet     m_HiNodes;

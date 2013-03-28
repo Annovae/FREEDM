@@ -123,6 +123,7 @@ LBAgent::LBAgent(std::string uuid_, CBroker &broker):
     RegisterSubhandle("lb.LamdaUpdate", boost::bind(&LBAgent::HandleUpdate, this, _1, _2));
     RegisterSubhandle("any", boost::bind(&LBAgent::HandleAny, this, _1, _2));
     m_sstExists = false;
+    countcycle = 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -655,6 +656,8 @@ void LBAgent::LeaderICC()
     //update lamda according to equation 12
     Logger.Status << "------leader ICC------" << std::endl;
     std::string uuid_;
+    m_preLamda = m_lamda;
+
     m_lamda = 0;
     /*
         //print out network variables
@@ -678,7 +681,11 @@ void LBAgent::LeaderICC()
     }
     
     PGen_total += m_PGen;
+    Logger.Status << "----------Total generation value is" << PGen_total << std::endl;
+
     m_deltaP = m_PDemand - PGen_total;
+    Logger.Status << "------------DeltaP equals to " << m_deltaP << std::endl;
+    
     //calculate new lamda
     BOOST_FOREACH(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
     {
@@ -697,10 +704,19 @@ void LBAgent::LeaderICC()
     m_collectPGen.clear();
 
     countlambda = 0;
+
     //insert new one
     m_collectlamda.insert(std::pair<std::string, float>(GetUUID(), m_lamda));
-    //send update lamda out
-    Update(m_lamda, m_PGen);
+    if (!isEqual(m_preLamda, m_lamda))
+    {
+        //send update lamda out
+        Update(m_lamda, m_PGen);
+        countcycle++;
+    }
+    else 
+    {
+	Logger.Status << "The lamda has been updated  " << countcycle << std::endl;
+    }
 }
 
 ////////////////////////////////////////////////////////////
@@ -715,6 +731,8 @@ void LBAgent::FollowerICC()
     Logger.Debug << __PRETTY_FUNCTION__ << std::endl;
     //update lamda according to equation 10
     std::string uuid_;
+
+    m_preLamda = m_lamda;
     m_lamda = 0;
     /*
         //print out network variables
@@ -729,6 +747,7 @@ void LBAgent::FollowerICC()
             Logger.Status << (*it).first << " && " << (*it).second << std::endl;
         }
     */
+
     //calculate new lamda
     BOOST_FOREACH(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
     {
@@ -737,6 +756,8 @@ void LBAgent::FollowerICC()
     }
     Logger.Status << "***********the update lamda in follower is **************"
     << m_lamda << std::endl;
+
+
     //calculate PGen and print out
     m_PGen = (m_lamda - m_beta)/(2*m_gama);
     Logger.Status << "***********the update PGen in follower is **************"
@@ -746,8 +767,16 @@ void LBAgent::FollowerICC()
     countlambda = 0;
 
     m_collectlamda.insert(std::pair<std::string, float>(GetUUID(), m_lamda));
-    //send update lamda out
-    Update(m_lamda, m_PGen);
+    if (!isEqual(m_preLamda, m_lamda))
+    {
+        //send update lamda out
+        Update(m_lamda, m_PGen);
+	countcycle++;
+    }
+    else
+    {
+	Logger.Status << "The lamda in follower has been updated " << countcycle << std::endl;
+    }
 }
 
 
@@ -786,6 +815,16 @@ void LBAgent::Update(float lamda, float PGen)
         }
     }
 }
+
+bool LBAgent::isEqual(float preLamda, float curLamda)
+{
+    Logger.Status << "previous lamda VS current lamda: " << preLamda << " : " << curLamda << std::endl;
+    if ((preLamda - curLamda) > -0.000001 && (preLamda - curLamda) < 0.000001 )
+	return true;
+    else
+	return false;
+}
+
 
 
 //ICC
@@ -897,13 +936,47 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
             i++;
         }
     }
+    else if (peerNum == 5)
+    {
+	if (m_Leader == GetUUID())
+	{
+	    BOOST_FOREACH(ptree::value_type &v, pt.get_child("Init.networkTop.starCon.fiveNodes.leader"))
+	    {
+		netVar = boost::lexical_cast<float>(v.second.data());
+		m_var.insert(std::pair<int, float>(i, netVar));
+		i++;
+	    }
+	}
+	else
+	{
+	    BOOST_FOREACH(ptree::value_type &v, pt.get_child("Init.networkTop.starCon.fiveNodes.follower"))
+	    {
+		netVar = boost::lexical_cast<float>(v.second.data());
+		m_var.insert(std::pair<int, float>(i, netVar));
+		i++;
+	    }
+	}
+    }
+    else
+    {
+	Logger.Status << "Network Topology is not on 3 or 5 nodes" << std::endl;
+    }
     
     //save network variables to container m_collectvar<string(UUID), float>
     if ( !m_var.empty())
     {
         //first variable assigned to local node
-        m_collectvar.insert(std::pair<std::string, float>(GetUUID(), m_var.find(1)->second));
-        i = 2;
+	if (m_Leader == GetUUID())
+	{
+            m_collectvar.insert(std::pair<std::string, float>(GetUUID(), m_var.find(1)->second));
+	    i = 2;
+	}
+	else
+	{
+	    m_collectvar.insert(std::pair<std::string, float>(GetUUID(), m_var.find(1)->second));
+	    m_collectvar.insert(std::pair<std::string, float>(m_Leader, m_var.find(2)->second));
+            i = 3;
+	}
         BOOST_FOREACH(PeerNodePtr peer_, m_AllPeers | boost::adaptors::map_values)
         {
             if (peer_->GetUUID() != GetUUID())
@@ -1167,10 +1240,12 @@ void LBAgent::HandleDrafting(MessagePtr msg, PeerNodePtr peer)
             
             // Make necessary power setting accordingly to allow power migration
             // !!!NOTE: You may use Step_PStar() or PStar(m_DemandVal) currently
+/*
             if (m_sstExists)
                 Step_PStar();
             else
                 Desd_PStar();
+*/
         }
         else
         {
@@ -1204,12 +1279,13 @@ void LBAgent::HandleAccept(MessagePtr msg, PeerNodePtr peer)
     {
         // Make necessary power setting accordingly to allow power migration
         Logger.Warn<<"Migrating power on request from: "<< peer->GetUUID() << std::endl;
-        
+/*        
         // !!!NOTE: You may use Step_PStar() or PStar(DemandValue) currently
         if (m_sstExists)
             Step_PStar();
         else
             Desd_PStar();
+*/
     }//end if( LBAgent::SUPPLY == m_Status)
     else
     {
@@ -1261,8 +1337,9 @@ void LBAgent::HandleCollectedState(MessagePtr msg, PeerNodePtr peer)
     //------------------------------------------------------------------------------------------//
     //ICC
     //generate a fake demand
-    m_PDemand = 850.0;
-    
+    //m_PDemand = 850.0;
+    m_PDemand = agg_gateway;
+    Logger.Status << "Total demand is " << m_PDemand << std::endl;
     if (GetUUID() == m_Leader && countlambda == m_AllPeers.size()-1)
     {
         LeaderICC();
