@@ -174,6 +174,9 @@ class LBAgent
 	float m_deltaP;
 	float m_epsilon;
 
+	/// flag to do step input load
+	bool stepLoad;
+	
 	/// Previous lamda
 	float m_preLamda;
 

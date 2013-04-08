@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 /// @file         LoadBalance.cpp
 ///
 /// @author       Ravi Akella <rcaq5c@mst.edu>
@@ -124,6 +124,7 @@ LBAgent::LBAgent(std::string uuid_, CBroker &broker):
     RegisterSubhandle("any", boost::bind(&LBAgent::HandleAny, this, _1, _2));
     m_sstExists = false;
     countcycle = 0;
+    stepLoad = false;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -677,6 +678,7 @@ void LBAgent::LeaderICC()
     
     for (it = m_collectPGen.begin(); it != m_collectPGen.end(); it++)
     {
+	//Logger.Status << "            " << (*it).second << std::endl;
         PGen_total += (*it).second;
     }
     
@@ -710,13 +712,16 @@ void LBAgent::LeaderICC()
     if (!isEqual(m_preLamda, m_lamda))
     {
         //send update lamda out
-        Update(m_lamda, m_PGen);
+        //Update(m_lamda, m_PGen);
         countcycle++;
     }
     else 
     {
 	Logger.Status << "The lamda has been updated  " << countcycle << std::endl;
+	stepLoad = true;
+	countcycle = 0;
     }
+    Update(m_lamda, m_PGen);
 }
 
 ////////////////////////////////////////////////////////////
@@ -770,13 +775,15 @@ void LBAgent::FollowerICC()
     if (!isEqual(m_preLamda, m_lamda))
     {
         //send update lamda out
-        Update(m_lamda, m_PGen);
+        //Update(m_lamda, m_PGen);
 	countcycle++;
     }
     else
     {
 	Logger.Status << "The lamda in follower has been updated " << countcycle << std::endl;
+	countcycle = 0;
     }
+    Update(m_lamda, m_PGen);
 }
 
 
@@ -959,6 +966,7 @@ void LBAgent::HandlePeerList(MessagePtr msg, PeerNodePtr peer)
     }
     else
     {
+	m_var.clear();
 	Logger.Status << "Network Topology is not on 3 or 5 nodes" << std::endl;
     }
     
@@ -1337,8 +1345,11 @@ void LBAgent::HandleCollectedState(MessagePtr msg, PeerNodePtr peer)
     //------------------------------------------------------------------------------------------//
     //ICC
     //generate a fake demand
-    //m_PDemand = 850.0;
-    m_PDemand = agg_gateway;
+    m_PDemand = 850.0;
+    if (stepLoad)
+    {
+	m_PDemand += agg_gateway;
+    }
     Logger.Status << "Total demand is " << m_PDemand << std::endl;
     if (GetUUID() == m_Leader && countlambda == m_AllPeers.size()-1)
     {
