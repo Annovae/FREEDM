@@ -927,7 +927,7 @@ void LBAgent::HandleAccept(CMessage msg, PeerNodePtr peer)
                 Step_PStar();
                 //update imbalanced power K (limitation: supply node)
                 Kei += P_Migrate;
-           }
+            }
             else
             {
                 Logger.Status << "Stop Migration.System will go to unstable if this migration happens"<< std::endl;
