@@ -1183,7 +1183,7 @@ void LBAgent::Msg_Ack_Received()
     }
     
 #ifdef ENABLE_ECN
-    int _ECN;
+    int _ECN=0;
     
     //ECN
     if (_ECN >= 11)
