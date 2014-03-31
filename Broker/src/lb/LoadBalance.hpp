@@ -41,12 +41,10 @@
 #ifndef LOADBALANCE_HPP_
 #define LOADBALANCE_HPP_
 
-#define ENABLE_ECN
-
 #include "CConnectionManager.hpp"
 #include "CDispatcher.hpp"
 #include "CMessage.hpp"
-#include "PhysicalDeviceTypes.hpp"
+#include "CDevice.hpp"
 
 #include "IPeerNode.hpp"
 #include "IAgent.hpp"
@@ -56,7 +54,6 @@
 #include <sstream>
 #include <vector>
 
-#include <boost/interprocess/sync/interprocess_mutex.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/shared_ptr.hpp>
 
@@ -65,14 +62,11 @@ using boost::property_tree::ptree;
 
 using namespace boost::asio;
 
-namespace freedm
-{
+namespace freedm {
 
-namespace broker
-{
+namespace broker {
 
-namespace lb
-{
+namespace lb {
 
 const double NORMAL_TOLERANCE = 0.5;
 //////////////////////////////////////////////////////////
@@ -82,20 +76,20 @@ const double NORMAL_TOLERANCE = 0.5;
 /// Declaration of LBAgent class for load balancing algorithm
 /////////////////////////////////////////////////////////
 class LBAgent
-        : public IReadHandler,
-        public IPeerNode,
-        public IAgent< boost::shared_ptr<IPeerNode> >
+    : public IReadHandler,
+      public IPeerNode,
+      public IAgent< boost::shared_ptr<IPeerNode> >
 {
     public:
         /// Constructor for using this object as a module
-        LBAgent(std::string uuid_, CBroker &broker);
-        
+        LBAgent(std::string uuid_);
+
         /// Main loop of the algorithm called from PosixBroker
         int Run();
-        
+
     private:
         enum EStatus { SUPPLY, NORM, DEMAND };
-        // Routines
+         // Routines
         /// Advertises a draft request to demand nodes on Supply
         void SendDraftRequest();
         /// Maintains the load table
@@ -106,7 +100,7 @@ class LBAgent
         void LoadManage( const boost::system::error_code& err );
         /// Sends request to SC module to initiate state collection on timeout
         void HandleStateTimer( const boost::system::error_code & error);
-        
+
         // Messages
         /// Sends a message 'msg' to the peers in 'peerSet_'
         void SendMsg(std::string msg, PeerSet peerSet_);
@@ -114,7 +108,7 @@ class LBAgent
         void CollectState();
         /// Sends the computed Normal to group members
         void SendNormal(double normal);
-        
+
         // Handlers
         /// Handles the incoming messages according to the message label
         virtual void HandleAny(MessagePtr msg,PeerNodePtr peer);
@@ -129,12 +123,12 @@ class LBAgent
         void HandleAccept(MessagePtr msg, PeerNodePtr peer);
         void HandleCollectedState(MessagePtr msg, PeerNodePtr peer);
         void HandleComputedNormal(MessagePtr msg, PeerNodePtr peer);
-        
+
         /// Adds a new peer by a pointer
         PeerNodePtr AddPeer(PeerNodePtr peer);
         /// Returns a pointer to the peer based on its UUID
         PeerNodePtr GetPeer(std::string uuid);
-        
+
         // Variables
         /// Calculated Normal
         double m_Normal;
@@ -158,7 +152,7 @@ class LBAgent
         EStatus   m_Status;
         /// Previous demand state of this node before state change
         EStatus   m_prevStatus;
-        
+
         // Peer lists
         /// Set of known peers in Demand State
         PeerSet     m_HiNodes;
@@ -168,7 +162,7 @@ class LBAgent
         PeerSet     m_LoNodes;
         /// Set of all the known peers
         PeerSet     m_AllPeers;
-        
+
         // Power migration functions
         /// 'Power migration' by stepping up/down P* by a constant value
         void Step_PStar();
@@ -176,21 +170,18 @@ class LBAgent
         void PStar(device::SignalValue DemandValue);
         /// 'Power migration' through controlling DESD devices
         void Desd_PStar();
-        
+
         // IO and Timers
         /// Timer until check of demand state change
         CBroker::TimerHandle     m_GlobalTimer;
         /// Timer until next periodic state collection
         CBroker::TimerHandle      m_StateTimer;
-        
-        CBroker &m_broker;
-        
-        bool m_sstExists;
+
         
         //for scheduling invariant
         //Kmaxlocal
         int Kmaxlocal;
-        int Curr_Period;
+        double Curr_Period;
         int Curr_K;
         int Better_RTT_Obs_Counter;
         bool First_Time_RTT;
@@ -236,7 +227,6 @@ class LBAgent
         //ECN timer
         CBroker::TimerHandle m_ECNTimer;
         
-        boost::interprocess::interprocess_mutex m_Mutex;
 
         ///cyber and physical invariant
         bool First_Time_Inv;
@@ -254,6 +244,11 @@ class LBAgent
         //gross power flow for physical invariant
         double GrossP; 
         double m_Frequency;
+
+        bool m_sstExists;
+        /// Set to true for the first get gateway call to indicate they should
+        /// Actually read the value.
+        bool m_actuallyread;
 };
 
 } // namespace lb
@@ -263,5 +258,4 @@ class LBAgent
 } // namespace freedm
 
 #endif
-
 
